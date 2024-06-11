@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="f70f102b-ab4b-4d11-97dd-554ef9823e73" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="2809d6b4-f30d-4465-b8e9-75459cbf4b67" >
+		<salesforce:basic-connection username="gangaraju@qbrainx1.com" password="Raju@1234" securityToken="TbFWDpTiOUTe8VKnNSMmhIsGv" />
+	</salesforce:sfdc-config>
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="6ea6abe7-651a-494a-8285-4c066a950b73">
+		<vm:queues >
+			<vm:queue queueName="Mule1" />
+			<vm:queue queueName="Mule2" />
+		</vm:queues>
+	</vm:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="e5b19ece-8f34-44ba-a5fc-5c270cb0a20d" >
+		<file:connection workingDir="E:\mulesoft_files" />
+	</file:config>
+	<flow name="database-demoFlow" doc:id="cd0b4af1-582a-4f14-9d80-de41bd17b9c1" >
+		<http:listener doc:name="Listener" doc:id="fc0d124e-cb59-414a-9820-871f145be9d5" config-ref="HTTP_Listener_config" path="/demopro"/>
+		<os:retrieve doc:name="Retrieve" doc:id="558120e8-30be-44ac-9992-873ac607e6b1" key="salesforce" target="oldval">
+			<os:default-value ><![CDATA[#[[]]]]></os:default-value>
+		</os:retrieve>
+		<salesforce:query doc:name="Queryids" doc:id="b48021bd-ba8a-4218-8d25-e60c2e99eb74" config-ref="Salesforce_Config" target="newval">
+			<salesforce:salesforce-query><![CDATA[Select Id From Account]]></salesforce:salesforce-query>
+		</salesforce:query>
+		<set-variable value="#[vars.newval.*Id]" doc:name="Set Variable" doc:id="eec4bb7c-b15d-4ced-b3cc-9402411c1a40" variableName="idval"/>
+		<ee:transform doc:name="Transform Message" doc:id="7bf66929-287a-49f8-a54c-1402180a19da" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="newrecords" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.idval -- vars.oldval]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6745a6d7-646a-4d89-9fb5-aba6a3f1b45d" >
+			<when expression="#[sizeOf(vars.newrecords)&gt;0]">
+				<os:store doc:name="Store" doc:id="1d8a3cb5-8aed-4c8d-a712-23a456fa38eb" key="salesforce">
+					<os:value ><![CDATA[#[vars.idval]]]></os:value>
+				</os:store>
+				<parallel-foreach doc:name="Parallel For Each" doc:id="79088b56-c983-4f19-8e53-e309bed445d0" collection="#[vars.newrecords]">
+					<salesforce:query doc:name="Queryrecords" doc:id="00763c57-60d1-4500-a3d6-5418134fb925" config-ref="Salesforce_Config">
+					<salesforce:salesforce-query><![CDATA[select Id,Name from Account where Id = ':id']]></salesforce:salesforce-query>
+					<salesforce:parameters><![CDATA[#[output application/java
+---
+{
+	"id" : payload
+}]]]></salesforce:parameters>
+				</salesforce:query>
+				</parallel-foreach>
+				<ee:transform doc:name="Transform Message" doc:id="52fe868d-6b73-4c0a-bba7-a61297d092f6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+flatten(payload.*payload)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<vm:publish doc:name="Publish" doc:id="d1d03ff5-45df-4306-918b-1f5d2d71208b" config-ref="VM_Config" queueName="Mule1">
+						<vm:content><![CDATA[#[output application/json
+---
+payload]]]></vm:content>
+					</vm:publish>
+				<!-- [STUDIO:"Logger"]				<logger level="INFO" doc:name="Logger" doc:id="336298db-ab0d-477e-92ef-b2e9ddf8be13" message="#[payload&#93;"/> [STUDIO] -->
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="4abdec63-5550-4c50-bbaf-3671373c355a" type="CUSTOM:SALESFORCENORECORDS" description='"There is noo records in Account Object"'/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="429826de-0b94-4950-92bc-b19a734b1d28" type="CUSTOM:SALESFORCENORECORDS">
+				<ee:transform doc:name="Transform Message" doc:id="9bb61eb2-5a7f-4f58-8aaa-8779b5356ed3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="database-demoFlow1" doc:id="99023ee8-ef0d-47c7-9380-29a2acf69764" >
+		<vm:listener queueName="Mule1" doc:name="Listener" doc:id="e0e54983-cc21-4348-98a6-701a02f14697" config-ref="VM_Config">
+			<vm:response >
+				<vm:content ><![CDATA[#[output application/json
+---
+payload]]]></vm:content>
+			</vm:response>
+		</vm:listener>
+		<batch:job jobName="database-demoBatch_Job" doc:id="2e36e385-13de-4ae2-8254-5c9c354fbb9f" maxFailedRecords="-1">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="a5aa5b62-132f-4831-9fd8-885d525c6282" acceptPolicy="ALL">
+					<flow-ref doc:name="Flow Reference" doc:id="98b80aca-3b46-4226-b8f5-e1170555d634" name="database-demoSub_Flow"/>
+				</batch:step>
+				<batch:step name="Batch_Step1" doc:id="af708697-98a1-43d7-bbd0-c4a75fc9fb6b" acceptPolicy="ONLY_FAILURES">
+					<vm:publish queueName="Mule2" doc:name="Publish" doc:id="dfd0dbe7-275e-4a52-b3c5-a3d570bc0912" config-ref="VM_Config"/>
+				</batch:step>
+			</batch:process-records>
+		</batch:job>
+	</flow>
+	<flow name="database-demoFlow2" doc:id="4108814e-0acb-4a86-8561-aac6ab9a213e" initialState="started">
+		<scheduler doc:name="Scheduler" doc:id="f1296fb5-15d9-4ebf-a2db-1e3e3da2bae2" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="5000"/>
+			</scheduling-strategy>
+		</scheduler>
+		<vm:consume queueName="Mule2" doc:name="Consume" doc:id="5659735d-d5a9-433d-b11b-c419b153105c" config-ref="VM_Config" timeout="1" timeoutUnit="HOURS"/>
+		<file:write doc:name="Write failed records" doc:id="54db66ad-ca82-4a00-95ef-5081da0dc31c" config-ref="File_Config" path="E:\mulesoft_files\salesforcefaileddata.csv" mode="APPEND"/>
+	</flow>
+	<sub-flow name="database-demoSub_Flow" doc:id="6fa0b1e7-b366-445b-be03-6c491551b6a9" >
+		<ee:transform doc:name="Transform Message" doc:id="b0735c35-552a-41ee-a168-208cd3e1f1b8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv header=false
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<file:write doc:name="Write" doc:id="558bac66-5790-44d7-ab3f-eb5f2d2f44b9" config-ref="File_Config" path="E:\mulesoft_files\salesforcedata2.csv" mode="APPEND" />
+	</sub-flow>
+	<flow name="database-demoFlow3" doc:id="e11ecfe6-769d-4244-aa31-60ab2e4f7d32" >
+		<http:listener doc:name="Listener" doc:id="de788c25-6f93-4ea0-bc26-afc19c1a70f8" config-ref="HTTP_Listener_config" path="/samplepro"/>
+		<set-variable value='#[[&#10;"0015i00001BfcypAAB",&#10;"0015i00001BfcyoAAB",&#10;"0015i00000QsE5TAAV",&#10;"0015i000019All7AAC"&#10;]]' doc:name="Set Variable" doc:id="b8bc2498-b3eb-42b0-b62f-4bc4c25397ff" variableName="records"/>
+		<parallel-foreach doc:name="Parallel For Each" doc:id="be8a3eb2-2206-4db1-b548-5056a4204acd" collection="#[vars.records]">
+			<salesforce:query doc:name="Query" doc:id="1e8fe3de-916e-419c-babb-3214eb0a3844" config-ref="Salesforce_Config" targetValue="#[output application/json --- payload]">
+			<salesforce:salesforce-query><![CDATA[select name from Account where id = ':id']]></salesforce:salesforce-query>
+				<salesforce:parameters ><![CDATA[#[output application/java
+---
+{
+	"id" : payload
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		</parallel-foreach>
+		<ee:transform doc:name="Transform Message" doc:id="a14d63d6-ac66-45b7-920a-5f72ac3118b3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
